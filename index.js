@@ -1,4 +1,5 @@
 const dotenv = require("dotenv");
+dotenv.config();
 //const Scratch = require('./scratchapi.js');
 const Scratch = require("scratch-api");
 const PROJECT_ID = 673158462;  // Project ID to connect to
