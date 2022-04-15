@@ -9,6 +9,7 @@ const IDLE_TIMEOUT = 10000;  // idle after 10 seconds
 const ID_LENGTH = 12;
 
 var requests = {};
+var responses = {};
 var completeUploadedRequests = [];
 var downloadResponsesRemaining = [];
 var status = 1;
@@ -144,7 +145,12 @@ function run() {
 			}
 
 			function ProcessRequests() {
-				decodeUploadedRequests();
+				let decodedRequests = decodeUploadedRequests();
+				responses = {}
+				for (i = 0; i < Object.keys(decodedRequests).length; i++) {
+					let requestID = Object.keys(decodedRequests)[i];
+					console.log(processRequest.process(decodedRequests[requestID]));
+				}
 				requests = {};
 				completeUploadedRequests = [];
 				status = 2;
@@ -160,7 +166,6 @@ function run() {
 						encodedChar = parseInt(RawData.slice(i*2,i*2+2)) - 1;
 						if (encodedChar == -1) {
 							output.push(string);
-							console.log(string.length)
 							string = "";
 						} else {
 							string += characters.charAt(encodedChar);
