@@ -47,7 +47,7 @@ function run() {
 					if (status == 1 && value == "1") { // new request ping
 						NewUpload();
 					} else if (status == 2 && value.charAt(0) == "2") { // user uploading data
-						Upload(value);
+						UploadChunk(value);
 						if (CheckUploadPhaseEnd()) {
 							EndUploadPhase();
 							ProcessRequests();
@@ -61,8 +61,8 @@ function run() {
 				Cloud.set("☁ STATUS", status);
 			}
 
-			function Upload(value) {
-				let data = ParseUpload(value);
+			function UploadChunk(value) {
+				let data = ParseChunk(value);
 				console.log(data)
 
 				let requestID = data["requestID"];
@@ -86,19 +86,15 @@ function run() {
 					};
 				} else {
 					if (requestID in requests && !(requests[requestID]["Error"])) {
-						if (chunkNum == 1) {
-							requests[requestID]["Error"] = true;
+						if (chunkNum == requests[requestID]["UploadedChunks"] + 1) {
+							requests[requestID]["RawData"] += rawData;
+							requests[requestID]["UploadedChunks"] = chunkNum;
+							requests[requestID]["LastUpdate"] = Date.now();
 						} else {
-							if (chunkNum == requests[requestID]["UploadedChunks"] + 1) {
-								requests[requestID]["RawData"] += rawData;
-								requests[requestID]["UploadedChunks"] = chunkNum;
-								requests[requestID]["LastUpdate"] = Date.now();
-							} else {
-								// missed a chunk
-								requests[requestID]["Error"] = true;
-							}
+							// missed a chunk
+							requests[requestID]["Error"] = true;
 						}
-					} 
+					}
 				}
 				if (!(requests[requestID]["Error"])) {
 					if (chunkNum == requests[requestID]["UploadChunksTotal"]) {
@@ -109,9 +105,9 @@ function run() {
 			}
 
 			// separate a upload value into the request ID, chunk number, total chunks (if new request) and encoded data.
-			function ParseUpload(value) {
+			function ParseChunk(value) {
 				let requestID, chunkNum, totalChunks, rawData;
-				let chunkNumLength = 0, totalChunksLength = 0;
+				let chunkNumLength = 0, totalChunksLength = -1;
 
 				// get request ID
 				requestID = parseInt(value.slice(1,1+ID_LENGTH));
@@ -126,6 +122,7 @@ function run() {
 					totalChunks = parseInt(value.slice(3+ID_LENGTH+chunkNumLength,3+ID_LENGTH+chunkNumLength+totalChunksLength));
 				}
 				// the rest of the variable is data encoded as numbers
+				console.log(value.slice(1+ID_LENGTH))
 				rawData = value.slice(3+ID_LENGTH+chunkNumLength+totalChunksLength)
 
 				let data = { "requestID":requestID, "chunkNum":chunkNum, "totalChunks":totalChunks, "rawData":rawData }
@@ -163,6 +160,7 @@ function run() {
 						encodedChar = parseInt(RawData.slice(i*2,i*2+2)) - 1;
 						if (encodedChar == -1) {
 							output.push(string);
+							console.log(string.length)
 							string = "";
 						} else {
 							string += characters.charAt(encodedChar);
