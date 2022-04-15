@@ -2,15 +2,17 @@ const dotenv = require("dotenv");
 dotenv.config();
 //const Scratch = require('./scratchapi.js');
 const Scratch = require("scratch-api");
+const processRequest = require("./processRequest.js")
+
 const PROJECT_ID = 673158462;  // Project ID to connect to
 const IDLE_TIMEOUT = 10000;  // idle after 10 seconds
 const ID_LENGTH = 12;
 
-let requests = {};
-let completeUploadedRequests = [];
-let downloadResponsesRemaining = [];
-let status = 1;
-let updatesSent = 0;
+var requests = {};
+var completeUploadedRequests = [];
+var downloadResponsesRemaining = [];
+var status = 1;
+var updatesSent = 0;
 
 
 /*Status
@@ -19,7 +21,7 @@ let updatesSent = 0;
 3 - PROCESSING
 4 - DOWNLOAD phase*/
 
-let total = 0;
+var total = 0;
 
 
 function run() {
@@ -42,92 +44,95 @@ function run() {
 			// cloud variable updates
 			Cloud.on('set', (name, value) => {
 				if (name == "☁ UPLOAD") {
-					// clear timeout
-					if (typeof timeoutID !== "undefined") {
-						clearTimeout(timeoutID);
-					}
 					if (status == 1 && value == "1") { // new request ping
-						status = 2;
-						Cloud.set("☁ STATUS", status);
-						
-					} else if (value.slice(0,1) == "2") { // user uploading data
-						// get request ID
-						char = 1;
-						let requestID = parseInt(value.slice(char,char+ID_LENGTH));
-						char += ID_LENGTH;
-						let chunkNumLength = parseInt(value.charAt(char));
-						char += 1;
-						// get chunk number
-						let chunkNum = parseInt(value.slice(char,char+chunkNumLength));
-						char += chunkNumLength;
-						// check if new request
-						if (chunkNum == 1 && !(requestID in requests)) {
-							if (status == 2) { // only allow new requests if upload phase
-								let totalChunksLength = parseInt(value.charAt(char));
-								char += 1;
-								// get total chunks
-								let totalChunks = parseInt(value.slice(char,char+totalChunksLength));
-								char += totalChunksLength;
-								// data of request
-								let data = value.slice(char);
-								// set requestID object and store in the requests object
-								requests[requestID] = {'UploadChunksTotal': totalChunks, 'UploadedChunks': chunkNum,
-														'RawData': data, "UploadComplete": false, "DecodedData": [], 
-														"DownloadChunksTotal": 0, "DownloadedChunks": 0,
-														"EncodedDownloadChunks": [], "Error": false,
-														"LastUpdate": Date.now(),
-													};
-								if (chunkNum == requests[requestID]["UploadChunksTotal"]) {
-									requests[requestID]["UploadComplete"] = true;
-									completeUploadedRequests.push(requestID);
-								}
-							}
-						} else {
-							// not new request
-							if (requestID in requests && requests[requestID]["Error"] == false) {
-								if (chunkNum == 1) {
-									requests[requestID]["Error"] = true;
-								} else {
-									if (chunkNum == requests[requestID]["UploadedChunks"] + 1) {
-										data = value.slice(char);
-										requests[requestID]["RawData"] += data;
-										requests[requestID]["UploadedChunks"] = chunkNum;
-										requests[requestID]["LastUpdate"] = Date.now();
-										if (chunkNum == requests[requestID]["UploadChunksTotal"]) {
-											requests[requestID]["UploadComplete"] = true;
-											completeUploadedRequests.push(requestID);
-										}
-									} else {
-										// missed a chunk
-										requests[requestID]["Error"] = true;
-									}
-								}
-							}
+						NewUpload();
+					} else if (status == 2 && value.charAt(0) == "2") { // user uploading data
+						Upload(value);
+						if (CheckUploadPhaseEnd()) {
+							EndUploadPhase();
+							ProcessRequests();
 						}
-						if (checkUploadPhaseEnd()) {
-							endUploadPhase();
-							decodeUploadedRequests();
-							requests = {};
-							completeUploadedRequests = [];
-							status = 2;
-							Cloud.set("☁ STATUS", status);
-						}
-
-					}
-					//console.log(chunkNum,value);
-					
-					// set timeout for inactivity
-					timeoutID = setTimeout(Idle,IDLE_TIMEOUT);
-
-					function Idle() {
-						// set status to idle
-						status = 1;
-						Cloud.set("☁ STATUS", status);
 					}
 				}
 			})
 
-			function checkUploadPhaseEnd() {
+			function NewUpload() {
+				status = 2;
+				Cloud.set("☁ STATUS", status);
+			}
+
+			function Upload(value) {
+				let data = ParseUpload(value);
+				console.log(data)
+
+				let requestID = data["requestID"];
+				let chunkNum = data["chunkNum"];
+				let totalChunks = data["totalChunks"];
+				let rawData = data["rawData"];
+
+				if (chunkNum == 1) {
+					// create a new request object
+					requests[requestID] = {
+						'UploadChunksTotal': totalChunks, 
+						'UploadedChunks': chunkNum,
+						'RawData': rawData, 
+						"UploadComplete": false, 
+						"DecodedData": [], 
+						"DownloadChunksTotal": 0, 
+						"DownloadedChunks": 0,
+						"EncodedDownloadChunks": [], 
+						"Error": false,
+						"LastUpdate": Date.now(),
+					};
+				} else {
+					if (requestID in requests && !(requests[requestID]["Error"])) {
+						if (chunkNum == 1) {
+							requests[requestID]["Error"] = true;
+						} else {
+							if (chunkNum == requests[requestID]["UploadedChunks"] + 1) {
+								requests[requestID]["RawData"] += rawData;
+								requests[requestID]["UploadedChunks"] = chunkNum;
+								requests[requestID]["LastUpdate"] = Date.now();
+							} else {
+								// missed a chunk
+								requests[requestID]["Error"] = true;
+							}
+						}
+					} 
+				}
+				if (!(requests[requestID]["Error"])) {
+					if (chunkNum == requests[requestID]["UploadChunksTotal"]) {
+						requests[requestID]["UploadComplete"] = true;
+						completeUploadedRequests.push(requestID);
+					}
+				}
+			}
+
+			// separate a upload value into the request ID, chunk number, total chunks (if new request) and encoded data.
+			function ParseUpload(value) {
+				let requestID, chunkNum, totalChunks, rawData;
+				let chunkNumLength = 0, totalChunksLength = 0;
+
+				// get request ID
+				requestID = parseInt(value.slice(1,1+ID_LENGTH));
+				// get length of chunk number
+				chunkNumLength = parseInt(value.charAt(1+ID_LENGTH));
+				// get chunk number
+				chunkNum = parseInt(value.slice(2+ID_LENGTH,2+ID_LENGTH+chunkNumLength));
+				if (chunkNum == 1) { // first chunk also includes the amount of chunks
+					// get length of total chunks length
+					totalChunksLength = parseInt(value.charAt(2+ID_LENGTH+chunkNumLength));
+					// get total chunks
+					totalChunks = parseInt(value.slice(3+ID_LENGTH+chunkNumLength,3+ID_LENGTH+chunkNumLength+totalChunksLength));
+				}
+				// the rest of the variable is data encoded as numbers
+				rawData = value.slice(3+ID_LENGTH+chunkNumLength+totalChunksLength)
+
+				let data = { "requestID":requestID, "chunkNum":chunkNum, "totalChunks":totalChunks, "rawData":rawData }
+				return data;
+			}
+
+			function CheckUploadPhaseEnd() {
 				if (completeUploadedRequests.length > 0) {
 					return true;
 				} else {
@@ -135,10 +140,18 @@ function run() {
 				}
 			}
 
-			function endUploadPhase() {
+			function EndUploadPhase() {
 				status = 3;
 				updatesSent = 0;
 				Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
+			}
+
+			function ProcessRequests() {
+				decodeUploadedRequests();
+				requests = {};
+				completeUploadedRequests = [];
+				status = 2;
+				Cloud.set("☁ STATUS", status);
 			}
 
 			function decodeUploadedRequests() {
@@ -171,7 +184,6 @@ function run() {
 		})
 	})
 }
-
 
 
 
