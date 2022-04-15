@@ -1,31 +1,62 @@
-const Fetch = require("node-fetch");
+const fetch = require("node-fetch");
 
-function process(data) {
-    let container = data[0];
-    let func = data[1];
-    data = data.slice(2);
-    
+async function process(request) {
+    let requestClass = request["class"];
+    let requestFunction = request["function"];
+    let requestData = request["data"];
+    let error = false;
+
     let response = {"status":200,"data":[]};
 
     try {
-        switch (container) {
+        switch (requestClass) {
             case 'user':
-                switch(func) {
-                    case 'getusername':
-                        get("https://api.scratch.mit.edu/users/mres")
-                        response["data"].push(data[0]);
-                    break;
+                switch(requestFunction) {
+                    case 'getJoinTimestamp':
+                        // request parameters: [username]
+                        // response values: [join date timestamp]
+                        let username;
+                        let timestamp;
+
+                        username = requestData[0];
+                        
+                        url = "https://api.scratch.mit.edu/users/"+username;
+                        apiRequest = await get(url).catch(function(status) {
+                            response = {"status":status,"data":[]};
+                            error = true;
+                        });
+                        if (!error) {
+                            timestamp = apiRequest["history"]["joined"];
+                            response["data"].push(timestamp);
+                        }
+                        break;
+                    default:
+                        response = {"status":400,"data":[]};
                 }
-            break;
+                break;
+            default:
+                response = {"status":400,"data":[]};
         }
-    } catch {
+    } catch(err) { 
+        console.log(err);
         response = {"status":500,"data":[]};
     }
+
     return response;
 }
 
 async function get(url) {
-    e = await Fetch(url)
-    console.log(e.json())
+    return new Promise((resolve, reject) => {
+        fetch(url).then(function(response) {
+            if (!response.ok) {
+                reject(response.status);
+            }
+            response.json().then(function(data) {
+                resolve(data);
+            })
+        })
+    })
 }
+
+
 module.exports = { process };

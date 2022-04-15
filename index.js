@@ -42,7 +42,7 @@ function run() {
 			Cloud.set("☁ STATUS", status);
 			
 			// cloud variable updates
-			Cloud.on('set', (name, value) => {
+			Cloud.on('set', async(name, value) => {
 				if (name == "☁ UPLOAD") {
 					if (status == 1 && value == "1") { // new request ping
 						NewUpload();
@@ -122,7 +122,6 @@ function run() {
 					totalChunks = parseInt(value.slice(3+ID_LENGTH+chunkNumLength,3+ID_LENGTH+chunkNumLength+totalChunksLength));
 				}
 				// the rest of the variable is data encoded as numbers
-				console.log(value.slice(1+ID_LENGTH))
 				rawData = value.slice(3+ID_LENGTH+chunkNumLength+totalChunksLength)
 
 				let data = { "requestID":requestID, "chunkNum":chunkNum, "totalChunks":totalChunks, "rawData":rawData }
@@ -143,12 +142,12 @@ function run() {
 				Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
 			}
 
-			function ProcessRequests() {
+			async function ProcessRequests() {
 				let decodedRequests = decodeUploadedRequests();
 				responses = {}
 				for (i = 0; i < Object.keys(decodedRequests).length; i++) {
 					let requestID = Object.keys(decodedRequests)[i];
-					console.log(processRequest.process(decodedRequests[requestID]));
+					console.log(await processRequest.process(decodedRequests[requestID]));
 				}
 				requests = {};
 				completeUploadedRequests = [];
@@ -175,10 +174,14 @@ function run() {
 				
 				decodedRequests = {};
 				for (i = 0; i < completeUploadedRequests.length; i++) {
+					// get request ID from the complete requests list
 					requestID = completeUploadedRequests[i];
+					// decode request
 					decodedRequest = decode(requests[requestID]["RawData"]);
-					requests[requestID]["DecodedData"] = decodedRequest;
-					decodedRequests[requestID] = decodedRequest;
+					// parse request into class, function, and values
+					parsedDecodedRequest = {"class":decodedRequest[0],"function":decodedRequest[1],"data":decodedRequest.slice(2)}
+					requests[requestID]["DecodedData"] = parsedDecodedRequest;
+					decodedRequests[requestID] = parsedDecodedRequest;
 				}
 				console.log(decodedRequests);
 				return decodedRequests;
