@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^16.0.0",
+    "node-fetch": "^2.6.7",
     "scratch-api": "^1.1.12"
   }
 }

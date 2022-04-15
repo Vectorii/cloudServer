@@ -1,6 +1,5 @@
-const dotenv = require("dotenv");
+const dotenv = require("dotenv")
 dotenv.config();
-//const Scratch = require('./scratchapi.js');
 const Scratch = require("scratch-api");
 const processRequest = require("./processRequest.js")
 
