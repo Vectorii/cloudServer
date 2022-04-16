@@ -18,7 +18,7 @@ async function process(request) {
             case 'getJoinTimestamp':
                 // request parameters: [username]
                 // response values: [timestamp of user join date]
-                let username = requestData[0];;
+                let username = requestData[0];
                 let timestamp;
                 
                 url = "https://api.scratch.mit.edu/users/"+username;
@@ -39,7 +39,6 @@ async function process(request) {
         console.log(err);
         response = {"status":500,"data":[]};
     }
-
     return response;
 }
 
