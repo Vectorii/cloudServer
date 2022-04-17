@@ -49,7 +49,9 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 					UploadChunk(value);
 					if (CheckUploadPhaseEnd()) {
 						EndUploadPhase();
-						ProcessRequests();
+						await ProcessRequests();
+						EncodeResponses();
+						CreateChunks();
 					}
 				}
 			}
@@ -62,7 +64,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 
 		function UploadChunk(value) {
 			let data = ParseChunk(value);
-			console.log(data)
+			console.log("upload",data)
 
 			let requestID = data["requestID"];
 			let chunkNum = data["chunkNum"];
@@ -142,19 +144,23 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 		}
 
 		async function ProcessRequests() {
-			let decodedRequests = decodeUploadedRequests();
+			let decodedRequests = decodeRequests();
 			responses = {}
 			for (let i = 0; i < Object.keys(decodedRequests).length; i++) {
 				let requestID = Object.keys(decodedRequests)[i];
-				let response = await processRequest.process(decodedRequests[requestID]);
-				let responseData = response["data"];
-				responseData.splice(0, 0, response["status"]);
-				console.log(responseData);
-				encodeResponse(responseData);
+				responses[requestID] = {
+					"ResponseData":[],
+					"EncodedData":"",
+					"TotalChunks":0,
+					"Chunks":[],
+				};
+				let responseData = await processRequest.process(decodedRequests[requestID]);
+				if (responseData["error"]) responseData["data"].splice(0,0,"error") 
+				responses[requestID]["ResponseData"] = responseData["data"];
 			}
 		}
 
-		function decodeUploadedRequests() {
+		function decodeRequests() {
 			function decode(RawData) {
 				output = [];
 				string = "";
@@ -176,26 +182,64 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 				requestID = completeUploadedRequests[i];
 				// decode request
 				decodedRequest = decode(requests[requestID]["RawData"]);
-				// parse request into class, function, and values
-				parsedDecodedRequest = {"class":decodedRequest[0],"function":decodedRequest[1],"data":decodedRequest.slice(2)}
+				// parse request into class, type, and data
+				parsedDecodedRequest = {"class":decodedRequest[0],"type":decodedRequest[1],"data":decodedRequest.slice(2)}
 				requests[requestID]["DecodedData"] = parsedDecodedRequest;
 				decodedRequests[requestID] = parsedDecodedRequest;
 			}
-			console.log(decodedRequests);
+			console.log("request",decodedRequests);
 			return decodedRequests;
 		}
 
-		function encodeResponse(responseData) {
-			let encodedResponse = "";
-			for (let item = 0; item < responseData.length; item++) {
-				for (char = 0; char < responseData[item].toString().length; char++) {
-					charValue = (CHARACTERS.indexOf(responseData[item].toString().charAt(char)) + 1).toString();
-					if (charValue.length == 1) charValue = "0"+charValue;
-					encodedResponse += charValue;
-				}
-				encodedResponse += "00";
+
+		function EncodeResponses() {
+			for (let i = 0; i < Object.keys(responses).length; i++) {
+				let requestID = Object.keys(responses)[i];
+				let responseData = responses[requestID]["ResponseData"];
+				responses[requestID]["EncodedData"] = Encode(responseData);
 			}
-			return encodedResponse;
+			function Encode(responseData) {
+				let encodedResponse = "";
+				for (let item = 0; item < responseData.length; item++) {
+					for (char = 0; char < responseData[item].toString().length; char++) {
+						charValue = (CHARACTERS.indexOf(responseData[item].toString().charAt(char)) + 1).toString();
+						if (charValue.length == 1) charValue = "0"+charValue;
+						encodedResponse += charValue;
+					}
+					encodedResponse += "00";
+				}
+				return encodedResponse;
+			}
+		}
+
+		function CreateChunks() {
+			for (let responseNum = 0; responseNum < Object.keys(responses).length; responseNum++) {
+				let requestID = Object.keys(responses)[responseNum];
+				let encodedResponse = responses[requestID]["EncodedData"];
+				totalDataLength = encodedResponse.length;
+				chunkCount = 0;
+				while (chunkCount < Math.ceil(totalDataLength/256)) {
+					chunkCount = Math.ceil(totalDataLength/256);
+					totalDataLength = encodedResponse.length;
+					for (let i = 1; i < chunkCount + 1; i++) {
+						if (i == 1) chunkHeader = "3" + requestID + i.toString().length + i + chunkCount.toString().length + chunkCount;
+						else chunkHeader = "3" + requestID + i.toString().length + i;
+						totalDataLength += chunkHeader.length;
+					}
+				}
+				responses[requestID]["TotalChunks"] = chunkCount;
+				char = 0;
+				for (let i = 1; i < chunkCount + 1; i++) {
+					chunkValue = ""
+					if (i == 1) chunkHeader = "3" + requestID + i.toString().length + i + chunkCount.toString().length + chunkCount;
+					else chunkHeader = "3" + requestID + i.toString().length + i;
+					chunkValue += chunkHeader;
+					chunkValue += encodedResponse.slice(char,char + (256 - chunkHeader.length));
+					responses[requestID]["Chunks"].push(chunkValue);
+					char += 256 - chunkHeader.length;
+				}
+			}
+			console.log("responses",responses)
 		}
 	})
 })

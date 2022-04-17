@@ -5,16 +5,16 @@ var error;
 
 async function process(request) {
     let requestClass = request["class"];
-    let requestFunction = request["function"];
+    let requestType = request["type"];
     let requestData = request["data"];
 
-    response = {"status":200,"data":[]};
     error = false;
+    response = {"error":false,"data":[]};
 
     try {
         switch (requestClass) {
         case 'user':
-            switch(requestFunction) {
+            switch(requestType) {
             case 'getJoinTimestamp':
                 // request parameters: [username]
                 // response values: [timestamp of user join date]
@@ -26,28 +26,31 @@ async function process(request) {
                 if (!error) {
                     timestamp = apiRequest["history"]["joined"];
                     response["data"].push(timestamp);
+                } else {
+                    response["error"] = error;
                 }
                 break;
             default:
-                response = {"status":400,"data":[]};
+                error = true;
+                response = {"error":error,"data":[]};
             }
             break;
         default:
-            response = {"status":400,"data":[]};
+            error = true;
+            response = {"error":error,"data":[]};
         }
     } catch(err) { 
-        console.log(err);
-        response = {"status":500,"data":[]};
+        error = true;
+        response = {"error":error,"data":[]};
     }
     return response;
 }
 
 async function get(url) {
-    return run().catch(function(status) {
-        response = {"status":status,"data":[]};
+    return run(url).catch(function(status) {
         error = true;
     })
-    function run() {
+    function run(url) {
         return new Promise((resolve, reject) => {
             fetch(url).then(function(response) {
                 if (!response.ok) {
