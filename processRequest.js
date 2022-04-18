@@ -26,9 +26,10 @@ async function process(request) {
                 if (error) break;
                 
                 timestamp = apiRequest["history"]["joined"];
-                for (i=0;i<100;i++) {
+                for (i=0;i<1;i++) {
                 response["data"].push(timestamp);
                 }
+                console.log(timestamp.repeat(100).length)
                 break;
             default:
                 error = true;

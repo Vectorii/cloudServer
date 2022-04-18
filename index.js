@@ -6,7 +6,7 @@ const processRequest = require("./processRequest.js")
 const PROJECT_ID = 673158462;  // Project ID to connect to
 const IDLE_TIMEOUT = 10000;  // idle after 10 seconds
 const ID_LENGTH = 12;
-
+const WAIT_SET_TIME = 1000;  // wait 1s before sending each set of data
 const CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456879`-=~!@#$%^&*()_+[]\\{}|;':\",./<>? ";
 
 var status = 1;
@@ -17,6 +17,8 @@ var responses = {};
 var responsesChunkCount = [];
 var responseIDsUnconfirmed = [];
 var updatesSent = 0;
+
+var lastSend = 0;
 
 
 /*Status
@@ -41,6 +43,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 			Cloud.set("☁ DOWNLOAD"+i, "");
 		}
 		Cloud.set("☁ STATUS", status);
+		lastSend = Date.now();
 		
 		// cloud variable updates
 		Cloud.on('set', async(name, value) => {
@@ -64,7 +67,11 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 
 		function UploadPhase() {
 			status = 2;
-			Cloud.set("☁ STATUS", status);
+			if (Date.now() - lastSend > WAIT_SET_TIME) 
+				Cloud.set("☁ STATUS", status);
+			else setTimeout(function() {
+				Cloud.set("☁ STATUS", status);
+			}, WAIT_SET_TIME)
 			completeUploadedRequests = [];
 		}
 
@@ -147,13 +154,18 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 			EncodeResponses();
 			CreateChunks();
 			console.log("responses",responses)
-			SendChunks();
+			if (Date.now()-lastSend > WAIT_SET_TIME/10) SendChunks();
+			else setTimeout(SendChunks,lastSend + WAIT_SET_TIME/10 - Date.now());
 		}
 
 		function EndUploadPhase() {
 			status = 3;
 			updatesSent = 0;
-			Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
+			if (Date.now()-lastSend > WAIT_SET_TIME/10) 
+				Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
+			else setTimeout(function() {
+				Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
+			}, WAIT_SET_TIME/10)
 		}
 
 		async function ProcessRequests() {
@@ -168,7 +180,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 					"Chunks":[],
 					"TotalChunks":0,
 					"ChunksSent":0,
-					"ChunksRecieved":0,
+					"ChunksReceived":0,
 				};
 				let responseData = await processRequest.process(decodedRequests[requestID]);
 				if (responseData["error"]) responseData["data"].splice(0,0,"error") 
@@ -293,17 +305,16 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 			}
 			updatesSent += 1;
 			Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
+			lastSend = Date.now();
 			console.log("send response "+updatesSent)
 		}
 
 		function DownloadReceived(value) {
-			requestID = value.slice(1);
-			console.log(requestID, responseIDsUnconfirmed)
+			requestID = value.slice(1,1+ID_LENGTH);
 			if (responseIDsUnconfirmed.includes(requestID)) {
 				responseIDsUnconfirmed.splice(responseIDsUnconfirmed.indexOf(requestID),1);
 				let receivedChunks = responses[requestID]["ChunksSent"];
 				responses[requestID]["ChunksReceived"] = receivedChunks;
-				console.log(receivedChunks,responses[requestID]["TotalChunks"])
 				if (responses[requestID]["TotalChunks"] == receivedChunks) {
 					delete responses[requestID];
 					delete requests[requestID];
@@ -315,9 +326,11 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 					return;
 				}
 			}
-			console.log(responseIDsUnconfirmed)
+			console.log(requestID,responseIDsUnconfirmed,responseIDsUnconfirmed.includes(requestID))
 			if (responseIDsUnconfirmed.length == 0) {
-				SendChunks();
+				if (Date.now()-lastSend > WAIT_SET_TIME) SendChunks();
+				else setTimeout(SendChunks,lastSend + WAIT_SET_TIME - Date.now());
+				console.log("send")
 			}
 		}
 	})
