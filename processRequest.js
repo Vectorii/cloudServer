@@ -26,7 +26,7 @@ async function process(request) {
                 if (error) break;
                 
                 timestamp = apiRequest["history"]["joined"];
-                for (i=0;i<1;i++) {
+                for (i=0;i<2;i++) {
                 response["data"].push(timestamp);
                 }
                 break;

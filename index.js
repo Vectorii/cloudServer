@@ -51,6 +51,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 				if (status == 1 && value == "1") { // new request ping
 					NewUpload();
 				} else if (status == 2 && value.charAt(0) == "2") { // user uploading data
+					console.log(value)
 					UploadChunk(value);
 					if (CheckUploadPhaseEnd()) {
 						await DownloadPhase();
