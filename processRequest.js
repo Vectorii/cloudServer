@@ -29,7 +29,6 @@ async function process(request) {
                 for (i=0;i<1;i++) {
                 response["data"].push(timestamp);
                 }
-                console.log(timestamp.repeat(100).length)
                 break;
             default:
                 error = true;

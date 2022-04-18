@@ -77,7 +77,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 
 		function UploadChunk(value) {
 			let data = ParseChunk(value);
-			console.log("upload",value,data)
+			console.log("upload",data)
 
 			let requestID = data["requestID"];
 			let chunkNum = data["chunkNum"];
@@ -169,7 +169,6 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 		}
 
 		async function ProcessRequests() {
-			console.log("REQUESTS",requests)
 			let decodedRequests = decodeRequests();
 			responses = {}
 			for (let i = 0; i < Object.keys(decodedRequests).length; i++) {
@@ -205,7 +204,6 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 			}
 			
 			let decodedRequests = {};
-			console.log(completeUploadedRequests)
 			for (i = 0; i < completeUploadedRequests.length; i++) {
 				// get request ID from the complete requests list
 				requestID = completeUploadedRequests[i];
@@ -321,16 +319,14 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 				}
 				// finished sending all chunks
 				if (Object.keys(responses).length == 0) {
-					console.log("request complete")
+					console.log("response complete\n\n")
 					UploadPhase();
 					return;
 				}
 			}
-			console.log(requestID,responseIDsUnconfirmed,responseIDsUnconfirmed.includes(requestID))
 			if (responseIDsUnconfirmed.length == 0) {
 				if (Date.now()-lastSend > WAIT_SET_TIME) SendChunks();
 				else setTimeout(SendChunks,lastSend + WAIT_SET_TIME - Date.now());
-				console.log("send")
 			}
 		}
 	})
