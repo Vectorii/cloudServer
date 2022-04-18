@@ -77,7 +77,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 
 		function UploadChunk(value) {
 			let data = ParseChunk(value);
-			console.log("upload",data)
+			console.log("upload",value,data)
 
 			let requestID = data["requestID"];
 			let chunkNum = data["chunkNum"];
