@@ -9,11 +9,13 @@ const ID_LENGTH = 12;
 
 const CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456879`-=~!@#$%^&*()_+[]\\{}|;':\",./<>? ";
 
-var requests = {};
-var responses = {};
-var completeUploadedRequests = [];
-var downloadResponsesRemaining = [];
 var status = 1;
+
+var requests = {};
+var completeUploadedRequests = [];
+var responses = {};
+var responsesChunkCount = [];
+var responseIDsUnconfirmed = [];
 var updatesSent = 0;
 
 
@@ -48,18 +50,22 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 				} else if (status == 2 && value.charAt(0) == "2") { // user uploading data
 					UploadChunk(value);
 					if (CheckUploadPhaseEnd()) {
-						EndUploadPhase();
-						await ProcessRequests();
-						EncodeResponses();
-						CreateChunks();
+						await DownloadPhase();
 					}
+				} else if (status == 3 && value.charAt(0) == "3") {
+					DownloadReceived(value)
 				}
 			}
 		})
 
 		function NewUpload() {
+			UploadPhase();
+		}
+
+		function UploadPhase() {
 			status = 2;
 			Cloud.set("☁ STATUS", status);
+			completeUploadedRequests = [];
 		}
 
 		function UploadChunk(value) {
@@ -132,9 +138,16 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 		function CheckUploadPhaseEnd() {
 			if (completeUploadedRequests.length > 0) {
 				return true;
-			} else {
-				return false;
-			}
+			} else return false;
+		}
+
+		async function DownloadPhase() {
+			EndUploadPhase();
+			await ProcessRequests();
+			EncodeResponses();
+			CreateChunks();
+			console.log("responses",responses)
+			SendChunks();
 		}
 
 		function EndUploadPhase() {
@@ -144,6 +157,7 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 		}
 
 		async function ProcessRequests() {
+			console.log("REQUESTS",requests)
 			let decodedRequests = decodeRequests();
 			responses = {}
 			for (let i = 0; i < Object.keys(decodedRequests).length; i++) {
@@ -151,8 +165,10 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 				responses[requestID] = {
 					"ResponseData":[],
 					"EncodedData":"",
-					"TotalChunks":0,
 					"Chunks":[],
+					"TotalChunks":0,
+					"ChunksSent":0,
+					"ChunksRecieved":0,
 				};
 				let responseData = await processRequest.process(decodedRequests[requestID]);
 				if (responseData["error"]) responseData["data"].splice(0,0,"error") 
@@ -176,7 +192,8 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 				return output;
 			}
 			
-			decodedRequests = {};
+			let decodedRequests = {};
+			console.log(completeUploadedRequests)
 			for (i = 0; i < completeUploadedRequests.length; i++) {
 				// get request ID from the complete requests list
 				requestID = completeUploadedRequests[i];
@@ -238,8 +255,70 @@ Scratch.UserSession.create(process.env.USERNAME, process.env.PASSWORD, (err, use
 					responses[requestID]["Chunks"].push(chunkValue);
 					char += 256 - chunkHeader.length;
 				}
+
+				responsesChunkCount.push({"":""})
 			}
-			console.log("responses",responses)
+		}
+
+		function SendChunks() {
+			responseIDsUnconfirmed = [];
+			let chunks = [];
+			let requestIDRemaining = [];
+			let chunksRemaining = [];
+			// decide which chunks to send
+			// send the smallest response total chunks first
+			// maximum 8 chunks at a time
+			do {
+				requestIDRemaining = [];
+				chunksRemaining = [];
+				for (let responseNum = 0; responseNum < Object.keys(responses).length; responseNum++) {
+					let requestID = Object.keys(responses)[responseNum];
+					responseChunksRemaining = responses[requestID]["TotalChunks"] - responses[requestID]["ChunksSent"];
+					if (responseChunksRemaining > 0) {
+						requestIDRemaining.push(requestID);
+						chunksRemaining.push(responseChunksRemaining);
+					}
+				}
+				if (requestIDRemaining.length > 0) {
+					let num = chunksRemaining.indexOf(Math.min(chunksRemaining))
+					let requestID = requestIDRemaining[num];
+					chunks.push(responses[requestID]["Chunks"][responses[requestID]["ChunksSent"]]);
+					responses[requestID]["ChunksSent"] += 1;
+					if (!(responseIDsUnconfirmed.includes(requestID))) responseIDsUnconfirmed.push(requestID);
+				}
+			} while (chunks.length < 8 && requestIDRemaining.length != 0);
+			// set cloud variables
+			for (i = 0; i < chunks.length; i++) {
+				Cloud.set("☁ DOWNLOAD" + i, chunks[i]);
+			}
+			updatesSent += 1;
+			Cloud.set("☁ STATUS", status.toString()+updatesSent.toString());
+			console.log("send response "+updatesSent)
+		}
+
+		function DownloadReceived(value) {
+			requestID = value.slice(1);
+			console.log(requestID, responseIDsUnconfirmed)
+			if (responseIDsUnconfirmed.includes(requestID)) {
+				responseIDsUnconfirmed.splice(responseIDsUnconfirmed.indexOf(requestID),1);
+				let receivedChunks = responses[requestID]["ChunksSent"];
+				responses[requestID]["ChunksReceived"] = receivedChunks;
+				console.log(receivedChunks,responses[requestID]["TotalChunks"])
+				if (responses[requestID]["TotalChunks"] == receivedChunks) {
+					delete responses[requestID];
+					delete requests[requestID];
+				}
+				// finished sending all chunks
+				if (Object.keys(responses).length == 0) {
+					console.log("request complete")
+					UploadPhase();
+					return;
+				}
+			}
+			console.log(responseIDsUnconfirmed)
+			if (responseIDsUnconfirmed.length == 0) {
+				SendChunks();
+			}
 		}
 	})
 })

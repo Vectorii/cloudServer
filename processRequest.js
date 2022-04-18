@@ -23,11 +23,11 @@ async function process(request) {
                 
                 url = "https://api.scratch.mit.edu/users/"+username;
                 apiRequest = await get(url);
-                if (!error) {
-                    timestamp = apiRequest["history"]["joined"];
-                    response["data"].push(timestamp);
-                } else {
-                    response["error"] = error;
+                if (error) break;
+                
+                timestamp = apiRequest["history"]["joined"];
+                for (i=0;i<100;i++) {
+                response["data"].push(timestamp);
                 }
                 break;
             default:
@@ -49,6 +49,7 @@ async function process(request) {
 async function get(url) {
     return run(url).catch(function(status) {
         error = true;
+        response["error"] = error
     })
     function run(url) {
         return new Promise((resolve, reject) => {
